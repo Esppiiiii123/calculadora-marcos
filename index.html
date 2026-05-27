@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculador de Marcos Profesional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen p-6 flex flex-col items-center justify-center">
+
+    <div class="max-w-2xl w-full bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 p-8">
+        
+        <div class="mb-8 text-center">
+            <span class="bg-amber-500/10 text-amber-400 text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-widest border border-amber-500/30">Paco Espinar</span>
+            <h1 class="text-4xl font-black text-white tracking-tight mt-3">PRESUPUESTADOR DE MARCOS</h1>
+            <p class="text-gray-400 text-base mt-2 font-medium">Introduce la referencia y las medidas para calcular el presupuesto</p>
+        </div>
+
+        <div id="contenedorInputs" class="grid grid-cols-2 gap-5"></div>
+
+        <div id="infoMoldura" class="mt-5 p-4 bg-gray-900/60 border border-gray-700 rounded-xl hidden">
+            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Moldura Localizada en el Archivo</p>
+            <p id="textoMoldura" class="text-base font-bold text-amber-400 mt-1"></p>
+        </div>
+
+        <button onclick="procesarPresupuesto()" 
+            class="w-full mt-8 bg-amber-500 hover:bg-amber-600 text-gray-950 font-black text-lg uppercase tracking-wider py-4.5 px-6 rounded-xl shadow-lg transform active:scale-[0.98] transition-all text-center block">
+            Calcular Precio
+        </button>
+
+        <div id="seccionResultados" class="mt-8 pt-6 border-t-2 border-gray-700 hidden">
+            <h3 class="text-base font-black text-amber-400 uppercase tracking-wider mb-4">3. Comparativa de Presupuestos Finales</h3>
+            
+            <div class="overflow-hidden rounded-xl border border-gray-700 bg-gray-900">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-800 text-xs font-black text-gray-300 uppercase tracking-wider border-b border-gray-700">
+                            <th class="px-5 py-4">Concepto / Acabado</th>
+                            <th class="px-5 py-4 text-right">Precio Inicial</th>
+                            <th class="px-5 py-4 text-right text-amber-400 text-sm">Precio Final (€ / Ptas)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaCuerpo" class="divide-y divide-gray-800 text-base font-semibold">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="./catalogo_molduras.js"></script>
+    
+    <script src="./config-excel.js"></script>
+    
+    <script>
+        // Constante de conversión oficial (1 euro = 166.386 pesetas)
+        const FACTOR_PESETAS = 166.386;
+
+        // Función que monta la pantalla nada más abrir el archivo
+        function inicializar() {
+            const contenedor = document.getElementById('contenedorInputs');
+            
+            // Recorremos los campos de config-excel.js para dibujar los inputs
+            contenedor.innerHTML = CONFIG_CAMPOS.map(c => {
+                const esReferencia = c.id === "referencia";
+                // La referencia ocupa el doble de ancho en pantalla para que sea más visual
+                const claseColumna = esReferencia ? "col-span-2" : "col-span-1";
+                const tipoInput = esReferencia ? "text" : "number";
+
+                return `
+                    <div class="${claseColumna}">
+                        <label class="block text-sm font-black text-amber-400 uppercase tracking-wider mb-2">${c.label}</label>
+                        <input type="${tipoInput}" id="input_${c.id}" 
+                            class="w-full bg-gray-700 border-2 border-gray-600 rounded-xl px-4 py-3.5 text-white text-lg font-bold focus:outline-none focus:border-amber-500 transition-colors uppercase">
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Función ejecutada al hacer click en el botón "Calcular"
+        function procesarPresupuesto() {
+    const inputs = {};
+    let valido = true;
+
+    // Recopilamos y validamos los datos introducidos
+    CONFIG_CAMPOS.forEach(c => {
+        const val = document.getElementById(`input_${c.id}`).value.trim();
+        
+        if (c.id === "descuento" && val === "") {
+            inputs[c.id] = 0;
+        } else {
+            if (val === "") valido = false;
+            inputs[c.id] = c.id === "referencia" ? val : Number(val);
+        }
+    });
+
+    if (!valido) {
+        alert("Por favor, rellena todos los campos del formulario.");
+        return;
+    }
+
+    // BUSCADOR ULTRA-RESISTENTE: Pasamos a mayúsculas y aplicamos .trim() a ambos lados
+    const refBuscada = inputs.referencia.toUpperCase().trim();
+    
+    const molduraEncontrada = CATALOGO_MOLDURAS.find(m => {
+        // Limpiamos también la referencia del catálogo por si tiene espacios ocultos del Excel
+        const refCatalogo = m.referencia.toUpperCase().trim();
+        return refCatalogo === refBuscada;
+    });
+
+    // Si la referencia no existe en el catálogo, avisamos y cortamos la ejecución
+    if (!molduraEncontrada) {
+        alert(`La referencia "${inputs.referencia}" no se encuentra en el archivo de precios.`);
+        document.getElementById('infoMoldura').classList.add('hidden');
+        return;
+    }
+
+    // Si existe, pintamos la tarjeta informativa con los datos reales encontrados
+    const precioMetroPtas = Math.round(molduraEncontrada.precioMetro * FACTOR_PESETAS);
+    document.getElementById('textoMoldura').innerText = `Ref: ${molduraEncontrada.referencia} — ${molduraEncontrada.nombre} (${molduraEncontrada.precioMetro.toFixed(2)}€/m ó ${precioMetroPtas.toLocaleString()} ptas/m)`;
+    document.getElementById('infoMoldura').classList.remove('hidden');
+
+    // Enviamos los datos numéricos y el precio por metro real al motor matemático
+    const resultados = calcularVariantes(inputs, molduraEncontrada.precioMetro);
+
+    // Pintamos las 5 filas resultantes actualizadas
+    const tablaCuerpo = document.getElementById('tablaCuerpo');
+    tablaCuerpo.innerHTML = resultados.map(r => {
+        const inicialPtas = Math.round(r.inicial * FACTOR_PESETAS);
+        const finalPtas = Math.round(r.final * FACTOR_PESETAS);
+
+        return `
+            <tr class="hover:bg-gray-800/40 transition-colors border-b border-gray-800">
+                <td class="px-5 py-4 font-bold text-gray-200 text-base py-5">${r.nombre}</td>
+                <td class="px-5 py-4 text-right text-gray-400 line-through text-sm">
+                    <div>${r.inicial.toFixed(2)}€</div>
+                    <div class="text-xs text-gray-500 mt-0.5">${inicialPtas.toLocaleString()} pts</div>
+                </td>
+                <td class="px-5 py-4 text-right py-5">
+                    <div class="font-black text-amber-400 text-xl">${r.final.toFixed(2)}€</div>
+                    <div class="text-xs font-bold text-gray-400 mt-0.5">${finalPtas.toLocaleString()} pts</div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Mostramos la sección de la tabla quitando la clase oculta
+    document.getElementById('seccionResultados').classList.remove('hidden');
+}
+
+        // Disparamos la inicialización visual en cuanto carga la página en el navegador
+        window.onload = inicializar;
+    </script>
+</body>
+</html>
